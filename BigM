@@ -1,0 +1,99 @@
+import numpy as np
+
+def big_m_method(c, A, b, constraint_types, M=1e6):
+    """
+    Solve linear programming problems using the Big M Method.
+
+    Arguments:
+    - c: Coefficients of the objective function
+    - A: Constraint coefficient matrix
+    - b: RHS values of constraints
+    - constraint_types: List of constraint types ('<=', '>=', '=')
+    - M: Big M penalty value for artificial variables
+
+    Returns:
+    - Optimal solution and value of Z
+    """
+    num_constraints, num_vars = A.shape
+    
+    # Step 1: Add slack, surplus, and artificial variables
+    slack_surplus_matrix = []
+    artificial_vars = []
+    for i, constraint_type in enumerate(constraint_types):
+        slack_surplus = [0] * num_constraints
+        artificial = [0] * num_constraints
+        if constraint_type == '<=':
+            slack_surplus[i] = 1  # Add slack variable
+        elif constraint_type == '>=':
+            slack_surplus[i] = -1  # Add surplus variable
+            artificial[i] = 1  # Add artificial variable
+        elif constraint_type == '=':
+            artificial[i] = 1  # Add artificial variable
+        slack_surplus_matrix.append(slack_surplus)
+        artificial_vars.append(artificial)
+
+    slack_surplus_matrix = np.array(slack_surplus_matrix).T
+    artificial_vars = np.array(artificial_vars).T
+
+    # Full initial tableau
+    tableau = np.hstack((A, slack_surplus_matrix, artificial_vars, b.reshape(-1, 1)))
+
+    # Step 2: Modify the objective function for the Big M Method
+    num_slack_surplus = slack_surplus_matrix.shape[1]
+    num_artificial = artificial_vars.shape[1]
+    c_row = np.hstack((-c, np.zeros(num_slack_surplus), [M] * num_artificial, 0))
+    tableau = np.vstack((tableau, c_row))
+
+    # Step 3: Add penalty for artificial variables in the objective row
+    for i in range(num_constraints):
+        if np.any(artificial_vars[i]):
+            tableau[-1] -= M * tableau[i]
+
+    # Step 4: Apply simplex iterations
+    while True:
+        # Step 4.1: Check for optimality
+        if all(tableau[-1, :-1] >= 0):
+            print("Optimal solution found.")
+            break
+
+        # Step 4.2: Identify pivot column (most negative in objective row)
+        pivot_col = np.argmin(tableau[-1, :-1])
+
+        # Step 4.3: Identify pivot row (minimum ratio test)
+        ratios = tableau[:-1, -1] / tableau[:-1, pivot_col]
+        ratios = np.where(ratios > 0, ratios, np.inf)  # Avoid invalid ratios
+        pivot_row = np.argmin(ratios)
+
+        if np.isinf(ratios[pivot_row]):
+            raise Exception("Unbounded solution detected.")
+
+        # Step 4.4: Perform pivot operation
+        pivot_element = tableau[pivot_row, pivot_col]
+        tableau[pivot_row] /= pivot_element
+        for i in range(len(tableau)):
+            if i != pivot_row:
+                tableau[i] -= tableau[i, pivot_col] * tableau[pivot_row]
+
+    # Extract solution
+    solution = np.zeros(num_vars)
+    for i in range(num_constraints):
+        if np.sum(tableau[i, :num_vars]) == 1:  # Basic variable
+            var_index = np.argmax(tableau[i, :num_vars])
+            solution[var_index] = tableau[i, -1]
+
+    optimal_value = tableau[-1, -1]
+    return solution, optimal_value
+
+
+# Example problem
+c = np.array([2, 1])  # Coefficients of the objective function
+A = np.array([
+    [1, 1],
+    [-1, 1]
+])  # Coefficients of constraints
+b = np.array([10, 2])  # RHS values of constraints
+constraint_types = ['<=', '>=']  # Types of constraints
+
+solution, optimal_value = big_m_method(c, A, b, constraint_types)
+print("Optimal Solution:", solution)
+print("Optimal Value of Z:", optimal_value)

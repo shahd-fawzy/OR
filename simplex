@@ -1,0 +1,70 @@
+import numpy as np
+
+def simplex_method(c, A, b):
+    """
+    Simplex Method to maximize Z = c.T @ x subject to Ax <= b and x >= 0
+    Arguments:
+    - c: Coefficients of the objective function
+    - A: Coefficients of the constraints
+    - b: RHS values of constraints
+    
+    Returns:
+    - Optimal solution and value of Z
+    """
+    # Add slack variables to A
+    num_constraints, num_vars = A.shape
+    slack_matrix = np.eye(num_constraints)
+    tableau = np.hstack((A, slack_matrix, b.reshape(-1, 1)))
+    
+    # Add the objective function row (with negative c for maximization)
+    c_row = np.hstack((-c, np.zeros(num_constraints + 1)))
+    tableau = np.vstack((tableau, c_row))
+    
+    # Perform Simplex iterations
+    while True:
+        # Step 1: Check optimality
+        if all(tableau[-1, :-1] >= 0):
+            print("Optimal solution found.")
+            break
+        
+        # Step 2: Identify pivot column (most negative in objective row)
+        pivot_col = np.argmin(tableau[-1, :-1])
+        
+        # Step 3: Identify pivot row (minimum ratio test)
+        ratios = tableau[:-1, -1] / tableau[:-1, pivot_col]
+        ratios = np.where(ratios > 0, ratios, np.inf)  # Avoid negative/zero ratios
+        pivot_row = np.argmin(ratios)
+        
+        if np.isinf(ratios[pivot_row]):
+            raise Exception("Unbounded solution detected.")
+        
+        # Step 4: Perform pivot operation
+        pivot_element = tableau[pivot_row, pivot_col]
+        tableau[pivot_row] /= pivot_element
+        for i in range(len(tableau)):
+            if i != pivot_row:
+                tableau[i] -= tableau[i, pivot_col] * tableau[pivot_row]
+    
+    # Extract solution
+    solution = np.zeros(num_vars)
+    for i in range(num_constraints):
+        if np.sum(tableau[i, :num_vars]) == 1:  # Basic variable
+            var_index = np.argmax(tableau[i, :num_vars])
+            solution[var_index] = tableau[i, -1]
+    
+    optimal_value = tableau[-1, -1]
+    return solution, optimal_value
+
+
+# Example problem
+c = np.array([3, 2])  # Coefficients of the objective function
+A = np.array([
+    [1, 1],
+    [1, 0],
+    [0, 1]
+])  # Coefficients of constraints
+b = np.array([4, 3, 2])  # RHS values of constraints
+
+solution, optimal_value = simplex_method(c, A, b)
+print("Optimal Solution:", solution)
+print("Optimal Value of Z:", optimal_value)

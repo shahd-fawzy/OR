@@ -1,0 +1,109 @@
+import numpy as np
+import matplotlib.pyplot as plt
+
+def graphical_method(c, constraints, bounds):
+    """
+    Solve a 2-variable linear programming problem using the graphical method.
+    
+    Arguments:
+    - c: Coefficients of the objective function
+    - constraints: List of tuples (A, b) where Ax <= b
+    - bounds: Bounds for x1 and x2 in the form [(x1_min, x1_max), (x2_min, x2_max)]
+    
+    Returns:
+    - Optimal solution and value of Z
+    """
+    # Define ranges for x1 and x2
+    x1_range = np.linspace(bounds[0][0], bounds[0][1], 500)
+    x2_range = np.linspace(bounds[1][0], bounds[1][1], 500)
+    
+    # Feasible region
+    feasible_x1 = []
+    feasible_x2 = []
+    
+    for x1 in x1_range:
+        for x2 in x2_range:
+            satisfies_all = True
+            for A, b in constraints:
+                if np.dot(A, [x1, x2]) > b:
+                    satisfies_all = False
+                    break
+            if satisfies_all:
+                feasible_x1.append(x1)
+                feasible_x2.append(x2)
+    
+    # Plot feasible region
+    plt.figure(figsize=(8, 8))
+    plt.scatter(feasible_x1, feasible_x2, s=1, color="lightblue", label="Feasible Region")
+    
+    # Plot constraint lines
+    for A, b in constraints:
+        if A[1] != 0:  # To avoid division by zero
+            x2_line = (b - A[0] * x1_range) / A[1]
+        else:  # Vertical line for x1
+            x2_line = np.full_like(x1_range, bounds[1][1])
+        plt.plot(x1_range, x2_line, label=f"{A[0]}x1 + {A[1]}x2 <= {b}")
+    
+    # Plot axes and limits
+    plt.xlim(bounds[0])
+    plt.ylim(bounds[1])
+    plt.axhline(0, color="black", linewidth=0.5)
+    plt.axvline(0, color="black", linewidth=0.5)
+    plt.xlabel("x1")
+    plt.ylabel("x2")
+    plt.title("Graphical Method for Linear Programming")
+    plt.legend()
+    
+    # Compute corner points
+    corner_points = []
+    for i, (A1, b1) in enumerate(constraints):
+        for j, (A2, b2) in enumerate(constraints):
+            if i >= j:  # Avoid duplicate pairs
+                continue
+            A_matrix = np.array([A1, A2])
+            b_vector = np.array([b1, b2])
+            try:
+                point = np.linalg.solve(A_matrix, b_vector)
+                satisfies_all=True
+                for A ,b in constraints:
+                    if np.dot(A,point)>b:
+                        satisfies_all=False
+                        break 
+                if satisfies_all and bounds[0][0] <=point[0]<=bounds[0][1] and bounds[1][0]<=point[1]<=bounds[1][1]:  #ensure within bounds
+                    corner_points.append(point)
+            except np.linalg.LinAlgError:
+                pass
+    
+    # Evaluate objective function at corner points
+    optimal_point = None
+    optimal_value = -np.inf
+    for point in corner_points:
+        value = np.dot(c, point)
+        if value > optimal_value:
+            optimal_value = value
+            optimal_point = point
+    
+    # Highlight optimal solution
+    plt.scatter(*optimal_point, color="red", label="Optimal Solution", zorder=5)
+    plt.annotate(f"Optimal: Z={optimal_value}\n({optimal_point[0]:.2f}, {optimal_point[1]:.2f})",
+                 xy=optimal_point, xytext=(optimal_point[0] + 0.5, optimal_point[1] + 0.5),
+                 arrowprops=dict(facecolor='black', arrowstyle="->"))
+    plt.legend()
+    plt.grid(True)
+    plt.show()
+    
+    return optimal_point, optimal_value
+
+
+# Example problem
+c = np.array([3, 2])  # Coefficients of the objective function
+constraints = [
+    (np.array([1, 1]), 4),  # x1 + x2 <= 4
+    (np.array([1, 0]), 3),  # x1 <= 3
+    (np.array([0, 1]), 2)   # x2 <= 2
+]
+bounds = [(0, 5), (0, 5)]  # Bounds for x1 and x2
+
+optimal_point, optimal_value = graphical_method(c, constraints, bounds)
+print("Optimal Solution:", optimal_point)
+print("Optimal Value of Z:", optimal_value)

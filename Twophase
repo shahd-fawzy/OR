@@ -1,0 +1,102 @@
+import numpy as np
+
+def two_phase_method(c, A, b, constraint_types):
+    num_constraints, num_vars = A.shape
+
+    # Phase 1: Add artificial and slack/surplus variables
+    artificial_vars = []
+    slack_surplus_matrix = []
+    for i, constraint_type in enumerate(constraint_types):
+        slack_surplus = [0] * num_constraints
+        artificial = [0] * num_constraints
+        if constraint_type == '<=':
+            slack_surplus[i] = 1  # Add slack variable
+        elif constraint_type == '>=':
+            slack_surplus[i] = -1  # Add surplus variable
+            artificial[i] = 1  # Add artificial variable
+        elif constraint_type == '=':
+            artificial[i] = 1  # Add artificial variable
+        slack_surplus_matrix.append(slack_surplus)
+        artificial_vars.append(artificial)
+
+    slack_surplus_matrix = np.array(slack_surplus_matrix).T
+    artificial_vars = np.array(artificial_vars).T
+
+    # Build the tableau for Phase 1
+    tableau = np.hstack((A, slack_surplus_matrix, artificial_vars, b.reshape(-1, 1)))
+    num_artificial = artificial_vars.shape[1]
+    c_phase1 = np.hstack((np.zeros(num_vars + slack_surplus_matrix.shape[1]), [1] * num_artificial, 0))
+    tableau = np.vstack((tableau, c_phase1))
+
+    def pivot(tableau):
+        # Find the entering variable (most negative coefficient in the last row)
+        pivot_col = np.argmin(tableau[-1, :-1])
+        if tableau[-1, pivot_col] >= 0:
+            return None, None
+
+        # Find the leaving variable (minimum positive ratio test)
+        ratios = tableau[:-1, -1] / tableau[:-1, pivot_col]
+        ratios = np.where(ratios > 0, ratios, np.inf)
+        pivot_row = np.argmin(ratios)
+        if np.isinf(ratios[pivot_row]):
+            raise Exception("Unbounded solution detected.")
+        return pivot_row, pivot_col
+
+    def perform_pivot(tableau, pivot_row, pivot_col):
+        # Normalize the pivot row
+        tableau[pivot_row] /= tableau[pivot_row, pivot_col]
+        for i in range(len(tableau)):
+            if i != pivot_row:
+                tableau[i] -= tableau[i, pivot_col] * tableau[pivot_row]
+
+    # Phase 1 Simplex
+    while True:
+        pivot_row, pivot_col = pivot(tableau)
+        if pivot_row is None:
+            break
+        perform_pivot(tableau, pivot_row, pivot_col)
+
+    # Check for feasibility
+    if any(tableau[:-1, -1] < 0):
+        raise Exception("Infeasible solution detected.")
+
+    # Remove artificial variables for Phase 2
+    tableau = np.delete(tableau, np.s_[-(num_artificial):-1], axis=1)
+
+    # Correct the objective function row for Phase 2
+    num_slack_surplus = slack_surplus_matrix.shape[1]
+    c_phase2 = np.hstack((-c, np.zeros(num_slack_surplus), 0))
+    tableau[-1, :len(c_phase2)] = c_phase2
+
+    # Phase 2 Simplex
+    while True:
+        pivot_row, pivot_col = pivot(tableau)
+        if pivot_row is None:
+            break
+        perform_pivot(tableau, pivot_row, pivot_col)
+
+    # Extract solution
+    solution = np.zeros(num_vars)
+    for col in range(num_vars):
+        col_values = tableau[:-1, col]
+        if np.sum(col_values == 1) == 1 and np.sum(col_values == 0) == len(col_values) - 1:
+            # Identify basic variable (column with a single 1 and rest 0s)
+            row_index = np.where(col_values == 1)[0][0]
+            solution[col] = tableau[row_index, -1]  # RHS value
+
+    optimal_value = tableau[-1, -1]
+    return solution, optimal_value
+
+
+# Example problem
+c = np.array([1, 3])  # Coefficients of the objective function
+A = np.array([
+    [-2, 1],  # Transformed constraint
+    [1, 1]
+])  # Coefficients of constraints
+b = np.array([1, 3])  # Transformed RHS values
+constraint_types = ['>=', '=']  # Transformed constraint types
+
+solution, optimal_value = two_phase_method(c, A, b, constraint_types)
+print("Optimal Solution:", solution)
+print("Optimal Value of Z:", optimal_value)
